@@ -77,7 +77,7 @@ if torch.cuda.is_available() or ngpu != 0:
 if torch.backends.mps.is_available():
     if_gpu_ok = True
     gpu_infos.append("%s\t%s" % ("0", "Apple GPU"))
-    mem.append(psutil.virtual_memory().total/ 1024 / 1024 / 1024) # 实测使用系统内存作为显存不会爆显存
+    mem.append(psutil.virtual_memory().total/ 1024 / 1024 / 1024 / 2)   #使用较小batch size缓解内存泄漏
 
 if if_gpu_ok and len(gpu_infos) > 0:
     gpu_info = "\n".join(gpu_infos)
