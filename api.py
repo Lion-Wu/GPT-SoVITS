@@ -172,6 +172,7 @@ from module.mel_processing import spectrogram_torch
 import config as global_config
 import logging
 import subprocess
+from device_utils import device_supports_fp16, empty_cache, is_mps_available, pick_device
 
 
 class DefaultRefer:
@@ -207,8 +208,8 @@ def clean_hifigan_model():
         hifigan_model = hifigan_model.cpu()
         hifigan_model = None
         try:
-            torch.cuda.empty_cache()
-        except:
+            empty_cache(device)
+        except Exception:
             pass
 
 
@@ -218,8 +219,8 @@ def clean_bigvgan_model():
         bigvgan_model = bigvgan_model.cpu()
         bigvgan_model = None
         try:
-            torch.cuda.empty_cache()
-        except:
+            empty_cache(device)
+        except Exception:
             pass
 
 
@@ -229,8 +230,8 @@ def clean_sv_cn_model():
         sv_cn_model.embedding_model = sv_cn_model.embedding_model.cpu()
         sv_cn_model = None
         try:
-            torch.cuda.empty_cache()
-        except:
+            empty_cache(device)
+        except Exception:
             pass
 
 
@@ -1195,7 +1196,7 @@ parser.add_argument("-g", "--gpt_path", type=str, default=g_config.gpt_path, hel
 parser.add_argument("-dr", "--default_refer_path", type=str, default="", help="默认参考音频路径")
 parser.add_argument("-dt", "--default_refer_text", type=str, default="", help="默认参考音频文本")
 parser.add_argument("-dl", "--default_refer_language", type=str, default="", help="默认参考音频语种")
-parser.add_argument("-d", "--device", type=str, default=g_config.infer_device, help="cuda / cpu")
+parser.add_argument("-d", "--device", type=str, default=g_config.infer_device, help="cuda / mps / cpu")
 parser.add_argument("-a", "--bind_addr", type=str, default="0.0.0.0", help="default: 0.0.0.0")
 parser.add_argument("-p", "--port", type=int, default=g_config.api_port, help="default: 9880")
 parser.add_argument(
@@ -1217,7 +1218,9 @@ parser.add_argument("-b", "--bert_path", type=str, default=g_config.bert_path, h
 args = parser.parse_args()
 sovits_path = args.sovits_path
 gpt_path = args.gpt_path
-device = args.device
+device = pick_device(args.device)
+if device.type == "mps" and is_mps_available():
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 port = args.port
 host = args.bind_addr
 cnhubert_base_path = args.hubert_path
@@ -1252,6 +1255,9 @@ if args.half_precision:
     is_half = True
 if args.full_precision and args.half_precision:
     is_half = g_config.is_half  # 炒饭fallback
+if is_half and not device_supports_fp16(device):
+    logger.warning("当前设备不支持半精度, 自动切换为全精度")
+    is_half = False
 logger.info(f"半精: {is_half}")
 
 # 流式返回模式

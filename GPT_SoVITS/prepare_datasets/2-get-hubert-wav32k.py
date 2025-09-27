@@ -16,7 +16,13 @@ opt_dir = os.environ.get("opt_dir")
 cnhubert.cnhubert_base_path = os.environ.get("cnhubert_base_dir")
 import torch
 
-is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+from device_utils import device_supports_fp16, is_mps_available, pick_device
+
+device = pick_device()
+if device.type == "mps" and is_mps_available():
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
+is_half = eval(os.environ.get("is_half", "True")) and device_supports_fp16(device)
 
 import traceback
 import numpy as np
@@ -59,15 +65,9 @@ os.makedirs(wav32dir, exist_ok=True)
 
 maxx = 0.95
 alpha = 0.5
-if torch.cuda.is_available():
-    device = "cuda:0"
-# elif torch.backends.mps.is_available():
-#     device = "mps"
-else:
-    device = "cpu"
 model = cnhubert.get_model()
 # is_half=False
-if is_half == True:
+if is_half:
     model = model.half().to(device)
 else:
     model = model.to(device)

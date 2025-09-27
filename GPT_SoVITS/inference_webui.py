@@ -31,6 +31,7 @@ import warnings
 import torch
 import torchaudio
 from text.LangSegmenter import LangSegmenter
+from device_utils import device_supports_fp16, empty_cache, is_mps_available, pick_device
 
 logging.getLogger("markdown_it").setLevel(logging.ERROR)
 logging.getLogger("urllib3").setLevel(logging.ERROR)
@@ -87,7 +88,11 @@ is_share = os.environ.get("is_share", "False")
 is_share = eval(is_share)
 if "_CUDA_VISIBLE_DEVICES" in os.environ:
     os.environ["CUDA_VISIBLE_DEVICES"] = os.environ["_CUDA_VISIBLE_DEVICES"]
-is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+device = pick_device()
+if device.type == "mps" and is_mps_available():
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
+is_half = eval(os.environ.get("is_half", "True")) and device_supports_fp16(device)
 # is_half=False
 punctuation = set(["!", "?", "…", ",", ".", "-", " "])
 import gradio as gr
@@ -111,7 +116,8 @@ def set_seed(seed):
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
+    if device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
 
 
 # set_seed(42)
@@ -131,11 +137,6 @@ language = sys.argv[-1] if sys.argv[-1] in scan_language_list() else language
 i18n = I18nAuto(language=language)
 
 # os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 确保直接启动推理UI时也能够设置。
-
-if torch.cuda.is_available():
-    device = "cuda"
-else:
-    device = "cpu"
 
 dict_language_v1 = {
     i18n("中文"): "all_zh",  # 全部按中文识别
@@ -162,7 +163,7 @@ dict_language = dict_language_v1 if version == "v1" else dict_language_v2
 
 tokenizer = AutoTokenizer.from_pretrained(bert_path)
 bert_model = AutoModelForMaskedLM.from_pretrained(bert_path)
-if is_half == True:
+if is_half:
     bert_model = bert_model.half().to(device)
 else:
     bert_model = bert_model.to(device)
@@ -410,7 +411,7 @@ def clean_hifigan_model():
         hifigan_model = hifigan_model.cpu()
         hifigan_model = None
         try:
-            torch.cuda.empty_cache()
+            empty_cache(device)
         except:
             pass
 
@@ -421,7 +422,7 @@ def clean_bigvgan_model():
         bigvgan_model = bigvgan_model.cpu()
         bigvgan_model = None
         try:
-            torch.cuda.empty_cache()
+            empty_cache(device)
         except:
             pass
 
@@ -432,7 +433,7 @@ def clean_sv_cn_model():
         sv_cn_model.embedding_model = sv_cn_model.embedding_model.cpu()
         sv_cn_model = None
         try:
-            torch.cuda.empty_cache()
+            empty_cache(device)
         except:
             pass
 

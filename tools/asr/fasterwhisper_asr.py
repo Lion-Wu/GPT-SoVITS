@@ -4,6 +4,7 @@ import time
 import traceback
 
 import torch
+from device_utils import is_mps_available
 from faster_whisper import WhisperModel
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import LocalEntryNotFoundError
@@ -85,7 +86,12 @@ def execute_asr(input_folder, output_folder, model_path, language, precision):
     if language == "auto":
         language = None  # 不设置语种由模型自动输出概率最高的语种
     print("loading faster whisper model:", model_path, model_path)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif is_mps_available():
+        device = "mps"
+    else:
+        device = "cpu"
     model = WhisperModel(model_path, device=device, compute_type=precision)
 
     input_file_names = os.listdir(input_folder)

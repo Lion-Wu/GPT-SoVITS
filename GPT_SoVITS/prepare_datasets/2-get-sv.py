@@ -15,7 +15,13 @@ opt_dir = os.environ.get("opt_dir")
 sv_path = os.environ.get("sv_path")
 import torch
 
-is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+from device_utils import device_supports_fp16, is_mps_available, pick_device
+
+device = pick_device()
+if device.type == "mps" and is_mps_available():
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
+is_half = eval(os.environ.get("is_half", "True")) and device_supports_fp16(device)
 
 import traceback
 import torchaudio
@@ -47,12 +53,6 @@ os.makedirs(wav32dir, exist_ok=True)
 
 maxx = 0.95
 alpha = 0.5
-if torch.cuda.is_available():
-    device = "cuda:0"
-# elif torch.backends.mps.is_available():
-#     device = "mps"
-else:
-    device = "cpu"
 
 
 class SV:
@@ -63,16 +63,16 @@ class SV:
         embedding_model.eval()
         self.embedding_model = embedding_model
         self.res = torchaudio.transforms.Resample(32000, 16000).to(device)
-        if is_half == False:
-            self.embedding_model = self.embedding_model.to(device)
-        else:
+        if is_half:
             self.embedding_model = self.embedding_model.half().to(device)
+        else:
+            self.embedding_model = self.embedding_model.to(device)
         self.is_half = is_half
 
     def compute_embedding3(self, wav):  # (1,x)#-1~1
         with torch.no_grad():
             wav = self.res(wav)
-            if self.is_half == True:
+            if self.is_half:
                 wav = wav.half()
             feat = torch.stack(
                 [Kaldi.fbank(wav0.unsqueeze(0), num_mel_bins=80, sample_frequency=16000, dither=0) for wav0 in wav]

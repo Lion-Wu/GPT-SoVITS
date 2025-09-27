@@ -22,12 +22,15 @@ from librosa.filters import mel as librosa_mel_fn
 
 
 from inference_webui import get_spepc, norm_spec, resample, ssl_model
+from device_utils import device_supports_fp16, is_mps_available, pick_device
 
 logging.config.dictConfig(uvicorn.config.LOGGING_CONFIG)
 logger = logging.getLogger("uvicorn")
 
-is_half = True
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = pick_device()
+if device.type == "mps" and is_mps_available():
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+is_half = device_supports_fp16(device)
 now_dir = os.getcwd()
 
 

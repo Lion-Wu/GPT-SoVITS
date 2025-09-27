@@ -28,6 +28,7 @@ import re
 import sys
 
 import torch
+from device_utils import device_supports_fp16, is_mps_available, pick_device
 
 now_dir = os.getcwd()
 sys.path.append(now_dir)
@@ -49,7 +50,11 @@ is_share = eval(is_share)
 if "_CUDA_VISIBLE_DEVICES" in os.environ:
     os.environ["CUDA_VISIBLE_DEVICES"] = os.environ["_CUDA_VISIBLE_DEVICES"]
 
-is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+device = pick_device()
+if device.type == "mps" and is_mps_available():
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
+is_half = eval(os.environ.get("is_half", "True")) and device_supports_fp16(device)
 gpt_path = os.environ.get("gpt_path", None)
 sovits_path = os.environ.get("sovits_path", None)
 cnhubert_base_path = os.environ.get("cnhubert_base_path", None)
@@ -70,12 +75,8 @@ i18n = I18nAuto(language=language)
 
 # os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 确保直接启动推理UI时也能够设置。
 
-if torch.cuda.is_available():
-    device = "cuda"
 # elif torch.backends.mps.is_available():
 #     device = "mps"
-else:
-    device = "cpu"
 
 # is_half = False
 # device = "cpu"

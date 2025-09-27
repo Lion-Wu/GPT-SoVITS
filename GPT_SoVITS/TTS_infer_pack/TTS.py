@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import yaml
+from device_utils import device_supports_fp16, empty_cache, is_mps_available, pick_device
 from AR.models.t2s_lightning_module import Text2SemanticLightningModule
 from BigVGAN.bigvgan import BigVGAN
 from feature_extractor.cnhubert import CNHubert
@@ -203,13 +204,10 @@ def set_seed(seed: int):
         if torch.cuda.is_available():
             torch.cuda.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
-            # torch.backends.cudnn.deterministic = True
-            # torch.backends.cudnn.benchmark = False
-            # torch.backends.cudnn.enabled = True
-            # 开启后会影响精度
-            torch.backends.cuda.matmul.allow_tf32 = False
-            torch.backends.cudnn.allow_tf32 = False
-    except:
+            if torch.cuda.is_available():
+                torch.backends.cuda.matmul.allow_tf32 = False
+                torch.backends.cudnn.allow_tf32 = False
+    except Exception:
         pass
     return seed
 
@@ -309,15 +307,16 @@ class TTS_Config:
         self.configs: dict = configs_.get("custom", configs_["v2"])
         self.default_configs = deepcopy(configs_)
 
-        self.device = self.configs.get("device", torch.device("cpu"))
-        if "cuda" in str(self.device) and not torch.cuda.is_available():
-            print("Warning: CUDA is not available, set device to CPU.")
-            self.device = torch.device("cpu")
+        self.device = pick_device(self.configs.get("device"))
+        if self.device.type == "mps" and is_mps_available():
+            os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
         self.is_half = self.configs.get("is_half", False)
-        if str(self.device) == "cpu" and self.is_half:
-            print(f"Warning: Half precision is not supported on CPU, set is_half to False.")
+        if self.is_half and not device_supports_fp16(self.device):
+            print("Warning: Half precision is not supported on the selected device, set is_half to False.")
             self.is_half = False
+        self.configs.device = self.device
+        self.configs.is_half = self.is_half
 
         version = self.configs.get("version", None)
         self.version = version
@@ -1367,10 +1366,7 @@ class TTS:
     def empty_cache(self):
         try:
             gc.collect()  # 触发gc的垃圾回收。避免内存一直增长。
-            if "cuda" in str(self.configs.device):
-                torch.cuda.empty_cache()
-            elif str(self.configs.device) == "mps":
-                torch.mps.empty_cache()
+            empty_cache(self.device)
         except:
             pass
 

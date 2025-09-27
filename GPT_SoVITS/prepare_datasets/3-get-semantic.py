@@ -28,7 +28,13 @@ else:
     version = "v3"
 import torch
 
-is_half = eval(os.environ.get("is_half", "True")) and torch.cuda.is_available()
+from device_utils import device_supports_fp16, is_mps_available, pick_device
+
+device = pick_device()
+if device.type == "mps" and is_mps_available():
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
+is_half = eval(os.environ.get("is_half", "True")) and device_supports_fp16(device)
 import traceback
 import sys
 
@@ -59,12 +65,7 @@ semantic_path = "%s/6-name2semantic-%s.tsv" % (opt_dir, i_part)
 if os.path.exists(semantic_path) == False:
     os.makedirs(opt_dir, exist_ok=True)
 
-    if torch.cuda.is_available():
-        device = "cuda"
-    # elif torch.backends.mps.is_available():
-    #     device = "mps"
-    else:
-        device = "cpu"
+    active_device = device
     hps = utils.get_hparams_from_file(s2config_path)
     vq_model = SynthesizerTrn(
         hps.data.filter_length // 2 + 1,
@@ -73,10 +74,10 @@ if os.path.exists(semantic_path) == False:
         version=version,
         **hps.model,
     )
-    if is_half == True:
-        vq_model = vq_model.half().to(device)
+    if is_half:
+        vq_model = vq_model.half().to(active_device)
     else:
-        vq_model = vq_model.to(device)
+        vq_model = vq_model.to(active_device)
     vq_model.eval()
     # utils.load_checkpoint(utils.latest_checkpoint_path(hps.s2_ckpt_dir, "G_*.pth"), vq_model, None, True)
     # utils.load_checkpoint(pretrained_s2G, vq_model, None, True)
@@ -91,10 +92,10 @@ if os.path.exists(semantic_path) == False:
         if os.path.exists(hubert_path) == False:
             return
         ssl_content = torch.load(hubert_path, map_location="cpu")
-        if is_half == True:
-            ssl_content = ssl_content.half().to(device)
+        if is_half:
+            ssl_content = ssl_content.half().to(active_device)
         else:
-            ssl_content = ssl_content.to(device)
+            ssl_content = ssl_content.to(active_device)
         codes = vq_model.extract_latent(ssl_content)
         semantic = " ".join([str(i) for i in codes[0, 0, :].tolist()])
         lines.append("%s\t%s" % (wav_name, semantic))

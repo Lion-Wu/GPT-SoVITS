@@ -9,6 +9,7 @@ import platform
 from pathlib import Path
 
 import torch
+from device_utils import is_mps_available
 from AR.data.data_module import Text2SemanticDataModule
 from AR.models.t2s_lightning_module import Text2SemanticLightningModule
 from AR.utils.io import load_yaml_config
@@ -108,17 +109,20 @@ def main(args):
     logger = TensorBoardLogger(name=output_dir.stem, save_dir=output_dir)
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["USE_LIBUV"] = "0"
+    has_cuda = torch.cuda.is_available()
+    has_mps = is_mps_available()
+    accelerator = "gpu" if has_cuda else ("mps" if has_mps else "cpu")
     trainer: Trainer = Trainer(
         max_epochs=config["train"]["epochs"],
-        accelerator="gpu" if torch.cuda.is_available() else "cpu",
+        accelerator=accelerator,
         # val_check_interval=9999999999999999999999,###不要验证
         # check_val_every_n_epoch=None,
         limit_val_batches=0,
-        devices=-1 if torch.cuda.is_available() else 1,
+        devices=-1 if has_cuda else 1,
         benchmark=False,
         fast_dev_run=False,
         strategy=DDPStrategy(process_group_backend="nccl" if platform.system() != "Windows" else "gloo")
-        if torch.cuda.is_available()
+        if has_cuda
         else "auto",
         precision=config["train"]["precision"],
         logger=logger,

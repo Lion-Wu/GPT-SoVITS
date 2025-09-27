@@ -4,6 +4,8 @@ import sys
 
 import torch
 
+from device_utils import device_supports_fp16, is_mps_available
+
 from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language=os.environ.get("language", "Auto"))
@@ -148,9 +150,9 @@ api_port = 9880
 # Thanks to the contribution of @Karasukaigan and @XXXXRT666
 def get_device_dtype_sm(idx: int) -> tuple[torch.device, torch.dtype, float, float]:
     cpu = torch.device("cpu")
-    cuda = torch.device(f"cuda:{idx}")
     if not torch.cuda.is_available():
         return cpu, torch.float32, 0.0, 0.0
+    cuda = torch.device(f"cuda:{idx}")
     device_idx = idx
     capability = torch.cuda.get_device_capability(device_idx)
     name = torch.cuda.get_device_name(device_idx)
@@ -171,20 +173,28 @@ def get_device_dtype_sm(idx: int) -> tuple[torch.device, torch.dtype, float, flo
 IS_GPU = True
 GPU_INFOS: list[str] = []
 GPU_INDEX: set[int] = set()
-GPU_COUNT = torch.cuda.device_count()
+GPU_COUNT = torch.cuda.device_count() if torch.cuda.is_available() else (1 if is_mps_available() else 0)
 CPU_INFO: str = "0\tCPU " + i18n("CPU训练,较慢")
 tmp: list[tuple[torch.device, torch.dtype, float, float]] = []
 memset: set[float] = set()
 
-for i in range(max(GPU_COUNT, 1)):
-    tmp.append(get_device_dtype_sm(i))
+if torch.cuda.is_available():
+    for i in range(max(GPU_COUNT, 1)):
+        tmp.append(get_device_dtype_sm(i))
+elif is_mps_available():
+    tmp.append((torch.device("mps"), torch.float32, 10.0, 24.0))
+else:
+    tmp.append((torch.device("cpu"), torch.float32, 0.0, 0.0))
 
 for j in tmp:
     device = j[0]
     memset.add(j[3])
-    if device.type != "cpu":
+    if device.type == "cuda":
         GPU_INFOS.append(f"{device.index}\t{torch.cuda.get_device_name(device.index)}")
         GPU_INDEX.add(device.index)
+    elif device.type == "mps":
+        GPU_INFOS.append("0\tApple MPS")
+        GPU_INDEX.add(0)
 
 if not GPU_INFOS:
     IS_GPU = False
@@ -192,7 +202,7 @@ if not GPU_INFOS:
     GPU_INDEX.add(0)
 
 infer_device = max(tmp, key=lambda x: (x[2], x[3]))[0]
-is_half = any(dtype == torch.float16 for _, dtype, _, _ in tmp)
+is_half = any(device_supports_fp16(device) and dtype == torch.float16 for device, dtype, _, _ in tmp)
 
 
 class Config:

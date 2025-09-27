@@ -7,6 +7,7 @@ import os
 import argparse
 import json
 import torch
+from device_utils import is_mps_available, pick_device
 import librosa
 from utils import load_checkpoint
 from meldataset import get_mel_spectrogram
@@ -74,9 +75,9 @@ def main():
     global device
     if torch.cuda.is_available():
         torch.cuda.manual_seed(h.seed)
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
+    device = pick_device()
+    if device.type == "mps" and is_mps_available():
+        os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
     inference(a, h)
 

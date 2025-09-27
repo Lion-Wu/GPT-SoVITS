@@ -14,6 +14,7 @@ import sys
 
 import ffmpeg
 import torch
+from device_utils import is_mps_available
 from bsroformer import Roformer_Loader
 from mdxnet import MDXNetDereverb
 from vr import AudioPre, AudioPreDeEcho
@@ -122,6 +123,11 @@ def uvr(model_name, inp_root, save_root_vocal, paths, save_root_ins, agg, format
         print("clean_empty_cache")
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        elif is_mps_available():
+            try:
+                torch.mps.empty_cache()
+            except AttributeError:
+                pass
     yield "\n".join(infos)
 
 
